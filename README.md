@@ -44,6 +44,7 @@ Enterprise Linux Server
 ## Documentation
 
 - [Skill instructions](SKILL.md)
+- [Install and smoke test guide (zh-CN)](docs/install.zh-CN.md)
 - [Technical reference (zh-CN)](docs/reference.zh-CN.md)
 - [Code architecture (zh-CN)](docs/architecture.zh-CN.md)
 
@@ -59,6 +60,7 @@ Basic local checks after installing the extension and native host:
 
 ```bash
 scripts/doctor.sh
+scripts/smoke.sh
 scripts/status.sh
 export WEBSSH_REMOTE_ENV=non-production
 scripts/read.sh 40

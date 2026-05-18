@@ -28,6 +28,7 @@ Scripts live in this skill directory:
 ```bash
 scripts/status.sh
 scripts/doctor.sh
+scripts/smoke.sh
 scripts/read.sh 40
 scripts/send.sh '<command>'
 scripts/key.sh enter
@@ -39,6 +40,8 @@ scripts/logs.sh last 10
 `status.sh` checks the native host, token file, extension connection, and bound browser tab.
 
 `doctor.sh` runs a broader install and connectivity diagnosis. Use it when setup or bridge communication looks broken.
+
+`smoke.sh` runs a bound-tab smoke test through `doctor`, `read`, `send`, `run`, and `key`. Use it after the user has bound a mock or real WebSSH tab.
 
 `read.sh` reads recent terminal output from the bound WebSSH tab.
 

@@ -20,6 +20,7 @@ webssh-remote-linux/
     com.webssh_remote_linux.bridge.json
   scripts/
     doctor.sh                 check install, bridge, extension, and bound tab
+    smoke.sh                  run a bound-tab smoke test
     status.sh                 check native host and bound tab status
     read.sh                   read recent terminal output
     send.sh                   send one command and Enter
@@ -119,6 +120,7 @@ HTTP 接口目前只有：
 export WEBSSH_REMOTE_ENV=non-production
 scripts/status.sh
 scripts/doctor.sh
+scripts/smoke.sh
 scripts/read.sh 40
 scripts/send.sh 'pwd'
 scripts/key.sh ctrl-c
