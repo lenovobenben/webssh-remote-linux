@@ -46,6 +46,8 @@ chrome://extensions
 native-host/install-host.sh <extension-id>
 ```
 
+脚本会校验 extension id 格式、写入 Native Messaging manifest，并打印后续操作提示。
+
 macOS 上 manifest 会写到：
 
 ```text

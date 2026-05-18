@@ -56,6 +56,12 @@ The initial code layout contains:
 - `native-host/`: Native Messaging host plus loopback bridge for local scripts.
 - `scripts/`: stable `status.sh`, `read.sh`, `send.sh`, `key.sh`, `run.sh`, and `logs.sh` entrypoints for AI agents.
 
+Install the native host after loading the unpacked extension:
+
+```bash
+native-host/install-host.sh <chrome-extension-id>
+```
+
 Basic local checks after installing the extension and native host:
 
 ```bash
