@@ -62,6 +62,12 @@ Install the native host after loading the unpacked extension:
 native-host/install-host.sh <chrome-extension-id>
 ```
 
+Uninstall the native host manifest:
+
+```bash
+native-host/uninstall-host.sh
+```
+
 Basic local checks after installing the extension and native host:
 
 ```bash

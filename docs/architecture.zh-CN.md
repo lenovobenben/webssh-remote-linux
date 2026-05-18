@@ -17,6 +17,7 @@ webssh-remote-linux/
   native-host/
     host.js                   Chrome Native Messaging host and loopback bridge
     install-host.sh           install user-level native host manifest
+    uninstall-host.sh         remove user-level native host manifest
     com.webssh_remote_linux.bridge.json
   scripts/
     doctor.sh                 check install, bridge, extension, and bound tab

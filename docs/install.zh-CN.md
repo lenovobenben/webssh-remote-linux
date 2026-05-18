@@ -164,3 +164,19 @@ scripts/doctor.sh
 ```bash
 WEBSSH_RUN_TIMEOUT_SECONDS=120 scripts/run.sh '<command>'
 ```
+
+## 卸载
+
+只移除 Chrome Native Messaging manifest：
+
+```bash
+native-host/uninstall-host.sh
+```
+
+同时移除本地 bridge token 和日志目录：
+
+```bash
+native-host/uninstall-host.sh --state
+```
+
+卸载后建议在 `chrome://extensions` 中 reload 或移除 `webssh-remote-linux` 扩展。
