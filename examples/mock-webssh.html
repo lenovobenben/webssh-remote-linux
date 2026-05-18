@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Mock WebSSH Terminal</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+
+      body {
+        margin: 0;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        background: #111827;
+        color: #d1d5db;
+      }
+
+      .terminal {
+        min-height: 100vh;
+        padding: 18px;
+        box-sizing: border-box;
+      }
+
+      .xterm {
+        position: relative;
+      }
+
+      .xterm-rows {
+        white-space: pre-wrap;
+        line-height: 1.45;
+      }
+
+      .xterm-helper-textarea {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        opacity: 0;
+        left: 0;
+        top: 0;
+      }
+
+      .cursor {
+        display: inline-block;
+        width: 8px;
+        height: 1.1em;
+        margin-left: 2px;
+        vertical-align: -0.2em;
+        background: #22c55e;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="terminal">
+      <div class="xterm" id="terminal">
+        <div class="xterm-rows" id="rows"></div>
+        <textarea class="xterm-helper-textarea" aria-label="Terminal input" id="input"></textarea>
+      </div>
+    </main>
+    <script>
+      const rows = document.getElementById("rows");
+      const input = document.getElementById("input");
+      let current = "";
+      const prompt = "mock@webssh:~$ ";
+
+      function render() {
+        rows.textContent = `${historyText}${prompt}${current}`;
+        const cursor = document.createElement("span");
+        cursor.className = "cursor";
+        rows.appendChild(cursor);
+      }
+
+      let historyText = [
+        "Mock WebSSH terminal",
+        "Commands: pwd, hostname, date, echo <text>, clear",
+        ""
+      ].join("\n");
+
+      function append(line) {
+        historyText += `${line}\n`;
+      }
+
+      function execute(command) {
+        append(`${prompt}${command}`);
+
+        if (command === "clear") {
+          historyText = "";
+        } else if (command === "pwd") {
+          append("/home/mock");
+        } else if (command === "hostname") {
+          append("mock-webssh");
+        } else if (command === "date") {
+          append(new Date().toString());
+        } else if (command.startsWith("echo ")) {
+          append(command.slice(5));
+        } else if (command.trim() === "") {
+          append("");
+        } else {
+          append(`mock: command not found: ${command}`);
+        }
+
+        current = "";
+        render();
+      }
+
+      function insertText(text) {
+        current += text;
+        input.value = "";
+        render();
+      }
+
+      input.addEventListener("paste", (event) => {
+        event.preventDefault();
+        insertText(event.clipboardData.getData("text/plain"));
+      });
+
+      input.addEventListener("input", () => {
+        if (input.value) {
+          insertText(input.value);
+        }
+      });
+
+      input.addEventListener("keydown", (event) => {
+        if (event.ctrlKey && event.key.toLowerCase() === "c") {
+          event.preventDefault();
+          append(`${prompt}${current}^C`);
+          current = "";
+          render();
+          return;
+        }
+
+        if (event.key === "Enter") {
+          event.preventDefault();
+          execute(current);
+        }
+      });
+
+      document.getElementById("terminal").addEventListener("click", () => {
+        input.focus();
+      });
+
+      render();
+      input.focus();
+    </script>
+  </body>
+</html>

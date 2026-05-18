@@ -17,6 +17,11 @@ function findTerminalElement() {
   return null;
 }
 
+function findTerminalContainer() {
+  const input = findTerminalElement();
+  return input?.closest(".xterm") || input?.closest(".terminal") || input || document.activeElement || document.body;
+}
+
 function findReadableTerminalRoot() {
   const selectors = [
     ".xterm-screen",
@@ -76,18 +81,51 @@ function dispatchTextInput(target, text) {
   );
 }
 
-function dispatchEnter(target) {
+function dispatchPaste(target, text) {
+  try {
+    const data = new DataTransfer();
+    data.setData("text/plain", text);
+    const event = new ClipboardEvent("paste", {
+      bubbles: true,
+      cancelable: true,
+      clipboardData: data
+    });
+    return { dispatched: true, canceled: !target.dispatchEvent(event) };
+  } catch (_) {
+    return { dispatched: false, canceled: false };
+  }
+}
+
+function keySpecFromName(name) {
+  const normalized = String(name || "").toLowerCase();
+
+  if (normalized === "enter") {
+    return { key: "Enter", code: "Enter" };
+  }
+
+  if (normalized === "ctrl-c" || normalized === "ctrl+c") {
+    return { key: "c", code: "KeyC", ctrlKey: true };
+  }
+
+  throw new Error(`unsupported key: ${name}`);
+}
+
+function dispatchKeyboard(target, keySpec) {
   target.focus();
 
+  const options = {
+    key: keySpec.key,
+    code: keySpec.code || keySpec.key,
+    bubbles: true,
+    cancelable: true,
+    ctrlKey: Boolean(keySpec.ctrlKey),
+    metaKey: Boolean(keySpec.metaKey),
+    altKey: Boolean(keySpec.altKey),
+    shiftKey: Boolean(keySpec.shiftKey)
+  };
+
   for (const type of ["keydown", "keypress", "keyup"]) {
-    target.dispatchEvent(
-      new KeyboardEvent(type, {
-        key: "Enter",
-        code: "Enter",
-        bubbles: true,
-        cancelable: true
-      })
-    );
+    target.dispatchEvent(new KeyboardEvent(type, options));
   }
 }
 
@@ -97,14 +135,34 @@ function sendTerminal(text, enter) {
     throw new Error("no terminal input element found");
   }
 
-  dispatchTextInput(target, text);
+  const paste = dispatchPaste(target, text);
+  if (!paste.canceled) {
+    dispatchTextInput(target, text);
+  }
   if (enter) {
-    dispatchEnter(target);
+    dispatchKeyboard(findTerminalContainer(), keySpecFromName("enter"));
   }
 
   return {
     sent: true,
     enter: Boolean(enter),
+    target: target.tagName.toLowerCase(),
+    url: location.href,
+    title: document.title
+  };
+}
+
+function sendKey(name) {
+  const target = findTerminalContainer();
+  if (!target) {
+    throw new Error("no terminal target found");
+  }
+
+  dispatchKeyboard(target, keySpecFromName(name));
+
+  return {
+    sent: true,
+    key: name,
     target: target.tagName.toLowerCase(),
     url: location.href,
     title: document.title
@@ -139,6 +197,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({
         ok: true,
         result: sendTerminal(message.text || "", message.enter !== false)
+      });
+      return true;
+    }
+
+    if (message.type === "webssh.key") {
+      sendResponse({
+        ok: true,
+        result: sendKey(message.key)
       });
       return true;
     }

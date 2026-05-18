@@ -52,4 +52,22 @@ The initial code layout contains:
 
 - `extension/`: Chrome Manifest V3 extension.
 - `native-host/`: Native Messaging host plus loopback bridge for local scripts.
-- `scripts/`: stable `read.sh`, `send.sh`, `run.sh`, and `logs.sh` entrypoints for AI agents.
+- `scripts/`: stable `status.sh`, `read.sh`, `send.sh`, `key.sh`, `run.sh`, and `logs.sh` entrypoints for AI agents.
+
+Basic local checks after installing the extension and native host:
+
+```bash
+scripts/status.sh
+export WEBSSH_REMOTE_ENV=non-production
+scripts/read.sh 40
+```
+
+For extension smoke tests without a real WebSSH product, serve and open:
+
+```bash
+python3 -m http.server 18080
+```
+
+```text
+http://127.0.0.1:18080/examples/mock-webssh.html
+```

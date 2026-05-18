@@ -19,8 +19,10 @@ webssh-remote-linux/
     install-host.sh           install user-level native host manifest
     com.webssh_remote_linux.bridge.json
   scripts/
+    status.sh                 check native host and bound tab status
     read.sh                   read recent terminal output
     send.sh                   send one command and Enter
+    key.sh                    send a supported terminal key
     run.sh                    run one marker-wrapped command
     logs.sh                   query local JSONL logs
     env_guard.sh              environment and production confirmation guard
@@ -29,6 +31,8 @@ webssh-remote-linux/
   docs/
     reference.zh-CN.md
     architecture.zh-CN.md
+  examples/
+    mock-webssh.html          local page for extension and bridge smoke tests
 ```
 
 ## 通信链路
@@ -47,6 +51,14 @@ scripts/*.sh
 ```
 
 `host.js` 是 Chrome 启动的 Native Messaging host。它同时启动一个只监听 `127.0.0.1` 的 HTTP bridge，给本地脚本使用。这个进程不保存远端凭据，也不直接连接远端服务器。
+
+为避免任意本机进程误调用 `/request`，native host 启动时会生成一个随机 token，并写入：
+
+```text
+~/.codex/webssh-remote-linux/bridge-token.json
+```
+
+脚本会读取这个 token，并通过 `x-webssh-bridge-token` header 调用本地 bridge。`GET /health` 不需要 token，只用于确认 native host 是否在线；`POST /request` 必须带 token。
 
 ## Extension
 
@@ -104,8 +116,10 @@ HTTP 接口目前只有：
 
 ```bash
 export WEBSSH_REMOTE_ENV=non-production
+scripts/status.sh
 scripts/read.sh 40
 scripts/send.sh 'pwd'
+scripts/key.sh ctrl-c
 scripts/run.sh 'pwd; hostname; date'
 scripts/logs.sh last 10
 ```
@@ -126,6 +140,30 @@ scripts/run.sh 'pwd; hostname'
 ```
 
 这些变量只能作为用户确认的转交，不允许 agent 自行设置来绕过审批。
+
+## 本地调试页面
+
+`examples/mock-webssh.html` 是一个很小的 xterm-like 页面，DOM 结构包含 `.xterm`、`.xterm-rows` 和 `.xterm-helper-textarea`，用于调试扩展的 tab 绑定、读取和输入能力。
+
+建议用本地 HTTP server 打开它，避免 Chrome 对 `file://` 页面的扩展访问限制：
+
+```bash
+python3 -m http.server 18080
+```
+
+然后打开：
+
+```text
+http://127.0.0.1:18080/examples/mock-webssh.html
+```
+
+在 Chrome extension popup 中绑定这个 tab 后，可以用：
+
+```bash
+scripts/status.sh
+export WEBSSH_REMOTE_ENV=non-production
+scripts/run.sh 'pwd; hostname; date'
+```
 
 ## 下一步
 

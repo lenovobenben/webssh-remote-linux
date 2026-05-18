@@ -2,12 +2,6 @@ const NATIVE_HOST = "com.webssh_remote_linux.bridge";
 
 let nativePort = null;
 let boundTabId = null;
-let nextRequestId = 1;
-const pendingNative = new Map();
-
-function makeId(prefix = "ext") {
-  return `${prefix}-${Date.now()}-${nextRequestId++}`;
-}
 
 function connectNative() {
   if (nativePort) {
@@ -28,10 +22,6 @@ function connectNative() {
 
   nativePort.onDisconnect.addListener(() => {
     nativePort = null;
-    for (const [id, pending] of pendingNative.entries()) {
-      pending.reject(new Error("native host disconnected"));
-      pendingNative.delete(id);
-    }
   });
 
   return nativePort;
@@ -93,6 +83,13 @@ async function handleBridgeRequest(message) {
       type: "webssh.send",
       text: request.text || "",
       enter: request.enter !== false
+    });
+  }
+
+  if (action === "key") {
+    return sendToBoundTab({
+      type: "webssh.key",
+      key: request.key || ""
     });
   }
 

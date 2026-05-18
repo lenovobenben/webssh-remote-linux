@@ -12,15 +12,27 @@ source "$script_dir/bridge.sh"
 webssh_require_environment
 webssh_require_node
 
-lines="${1:-${WEBSSH_LINES:-40}}"
-if ! [[ "$lines" =~ ^[0-9]+$ ]] || [ "$lines" -le 0 ]; then
-  echo "usage: $0 [positive-line-count]" >&2
+if [ "$#" -lt 1 ]; then
+  echo "usage: $0 <enter|ctrl-c>" >&2
   exit 2
 fi
 
+key_name="$1"
+case "$key_name" in
+  enter|ctrl-c|ctrl+c)
+    ;;
+  *)
+    echo "unsupported key: $key_name" >&2
+    echo "usage: $0 <enter|ctrl-c>" >&2
+    exit 2
+    ;;
+esac
+
+webssh_confirm_if_production "send key: $key_name"
+
 request_id="$(webssh_request_id)"
-payload="$(webssh_json_payload read "$request_id" "" "$lines")"
+payload="$(webssh_key_payload "$request_id" "$key_name")"
 response="$(webssh_bridge_request "$payload")"
 printf '%s' "$response" | webssh_response_ok >/dev/null
-printf '%s' "$response" | webssh_response_text
-printf '\n'
+webssh_log_send_event "$request_id" "key:$key_name"
+echo "[request_id $request_id]"
