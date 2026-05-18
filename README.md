@@ -43,6 +43,7 @@ Enterprise Linux Server
 
 ## Documentation
 
+- [Skill instructions](SKILL.md)
 - [Technical reference (zh-CN)](docs/reference.zh-CN.md)
 - [Code architecture (zh-CN)](docs/architecture.zh-CN.md)
 

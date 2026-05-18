@@ -141,6 +141,18 @@ scripts/run.sh 'pwd; hostname'
 
 这些变量只能作为用户确认的转交，不允许 agent 自行设置来绕过审批。
 
+`run.sh` 会发送 begin/end marker 包装命令，然后按 `WEBSSH_RUN_POLL_INTERVAL_SECONDS` 轮询读取终端，直到看到 end marker 或达到 `WEBSSH_RUN_TIMEOUT_SECONDS`。它只打印 marker 中间的输出，并在能解析退出码时使用远端退出码作为本地退出码。
+
+常用 `run.sh` 调优变量：
+
+```bash
+WEBSSH_RUN_TIMEOUT_SECONDS=30
+WEBSSH_RUN_POLL_INTERVAL_SECONDS=1
+WEBSSH_RUN_CAPTURE_LINES=400
+WEBSSH_RUN_MAX_OUTPUT_LINES=200
+WEBSSH_RUN_MAX_OUTPUT_BYTES=32768
+```
+
 ## 本地调试页面
 
 `examples/mock-webssh.html` 是一个很小的 xterm-like 页面，DOM 结构包含 `.xterm`、`.xterm-rows` 和 `.xterm-helper-textarea`，用于调试扩展的 tab 绑定、读取和输入能力。
@@ -171,6 +183,5 @@ scripts/run.sh 'pwd; hostname; date'
 
 - 增加具体 WebSSH/xterm.js adapter，不依赖通用 DOM 猜测。
 - 增加 extension 页面里的显式 session 选择和状态展示。
-- 让 `run.sh` 更可靠地轮询长命令，而不是只 sleep 一次。
 - 增加 shellcheck、eslint 或最小测试。
 - 完善 Native Messaging 安装文档和 Chrome extension 开发调试流程。
