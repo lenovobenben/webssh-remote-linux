@@ -27,6 +27,7 @@ Scripts live in this skill directory:
 
 ```bash
 scripts/status.sh
+scripts/doctor.sh
 scripts/read.sh 40
 scripts/send.sh '<command>'
 scripts/key.sh enter
@@ -36,6 +37,8 @@ scripts/logs.sh last 10
 ```
 
 `status.sh` checks the native host, token file, extension connection, and bound browser tab.
+
+`doctor.sh` runs a broader install and connectivity diagnosis. Use it when setup or bridge communication looks broken.
 
 `read.sh` reads recent terminal output from the bound WebSSH tab.
 

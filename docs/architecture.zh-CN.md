@@ -19,6 +19,7 @@ webssh-remote-linux/
     install-host.sh           install user-level native host manifest
     com.webssh_remote_linux.bridge.json
   scripts/
+    doctor.sh                 check install, bridge, extension, and bound tab
     status.sh                 check native host and bound tab status
     read.sh                   read recent terminal output
     send.sh                   send one command and Enter
@@ -117,6 +118,7 @@ HTTP 接口目前只有：
 ```bash
 export WEBSSH_REMOTE_ENV=non-production
 scripts/status.sh
+scripts/doctor.sh
 scripts/read.sh 40
 scripts/send.sh 'pwd'
 scripts/key.sh ctrl-c

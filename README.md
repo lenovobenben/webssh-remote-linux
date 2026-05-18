@@ -58,6 +58,7 @@ The initial code layout contains:
 Basic local checks after installing the extension and native host:
 
 ```bash
+scripts/doctor.sh
 scripts/status.sh
 export WEBSSH_REMOTE_ENV=non-production
 scripts/read.sh 40
