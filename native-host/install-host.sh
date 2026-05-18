@@ -5,7 +5,8 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_dir="$(cd "$script_dir/.." && pwd)"
 host_name="com.webssh_remote_linux.bridge"
 extension_id="${1:-}"
-host_path="$repo_dir/native-host/host.js"
+host_script_path="$repo_dir/native-host/host.js"
+host_path="$repo_dir/native-host/host-wrapper.sh"
 
 if [ -z "$extension_id" ]; then
   cat >&2 <<'EOF'
@@ -31,8 +32,13 @@ if ! command -v node >/dev/null 2>&1; then
   exit 2
 fi
 
+if [ ! -f "$host_script_path" ]; then
+  echo "native host script not found: $host_script_path" >&2
+  exit 2
+fi
+
 if [ ! -f "$host_path" ]; then
-  echo "native host script not found: $host_path" >&2
+  echo "native host wrapper not found: $host_path" >&2
   exit 2
 fi
 
@@ -57,7 +63,7 @@ sed \
   -e "s#chrome-extension://REPLACE_WITH_EXTENSION_ID/#chrome-extension://$extension_id/#" \
   "$script_dir/$host_name.json" > "$manifest_path"
 
-chmod +x "$host_path"
+chmod +x "$host_script_path" "$host_path"
 MANIFEST_PATH="$manifest_path" HOST_PATH="$host_path" EXTENSION_ID="$extension_id" node -e '
 const fs = require("node:fs");
 const manifestPath = process.env.MANIFEST_PATH;

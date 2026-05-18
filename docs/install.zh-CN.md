@@ -47,6 +47,7 @@ native-host/install-host.sh <extension-id>
 ```
 
 脚本会校验 extension id 格式、写入 Native Messaging manifest，并打印后续操作提示。
+manifest 会指向 `native-host/host-wrapper.sh`。这个 wrapper 会显式设置 Node.js 常见路径，避免 Chrome GUI 环境找不到 `node`。
 
 macOS 上 manifest 会写到：
 
@@ -164,6 +165,35 @@ scripts/doctor.sh
 
 ```bash
 WEBSSH_RUN_TIMEOUT_SECONDS=120 scripts/run.sh '<command>'
+```
+
+### Vultr noVNC 只能读到 `no VNC`
+
+Vultr Web Console 是 noVNC canvas 控制台。终端文字画在 canvas 上，DOM 中没有可直接读取的终端文本。`probe.sh` 应该能识别 `adapter: novnc`，但 `read.sh` 会提示 DOM text read 不可用。
+
+这种页面可以先测试输入 adapter；读屏能力需要额外方案，例如 noVNC framebuffer hook。不要把 OCR 当成默认方案。
+
+### ttyd 页面能输入但 `read.sh` 为空
+
+ttyd/xterm.js 可能用 canvas renderer，DOM 中没有 `.xterm-rows` 文本。当前实现依赖 `src/page-hook.js` 在页面创建 WebSocket 前注入。
+
+处理方式：
+
+1. 回到 `chrome://extensions` reload 扩展。
+2. 刷新 ttyd 页面。
+3. 再次点击扩展 popup 里的 `Bind Active Tab`。
+4. 运行：
+
+```bash
+export WEBSSH_REMOTE_ENV=non-production
+scripts/probe.sh
+scripts/read.sh 40
+```
+
+如果 `probe.sh` 返回 `xterm.hasSocketCapture: true`，说明已经捕获到服务端 PTY 输出流，可以继续使用：
+
+```bash
+scripts/run.sh 'pwd; hostname; df -h'
 ```
 
 ## 卸载

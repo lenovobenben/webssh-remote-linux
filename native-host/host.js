@@ -57,6 +57,21 @@ function handleNativeMessage(message) {
     return;
   }
 
+  if (message.type === "bridge.ping") {
+    sendNativeMessage({
+      id: message.id,
+      type: "bridge.pong",
+      ok: true,
+      result: {
+        pid: process.pid,
+        host: HOST,
+        port: PORT,
+        token_file: TOKEN_FILE
+      }
+    });
+    return;
+  }
+
   if (message.type !== "bridge.response") {
     return;
   }

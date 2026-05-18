@@ -1,5 +1,63 @@
+let injectedHook = false;
+let hookRequestId = 1;
+const hookRequests = new Map();
+
+function ensurePageHook() {
+  if (injectedHook) {
+    return;
+  }
+
+  window.addEventListener("message", (event) => {
+    if (event.source !== window || !event.data || event.data.source !== "webssh-remote-linux-page") {
+      return;
+    }
+
+    const pending = hookRequests.get(event.data.id);
+    if (!pending) {
+      return;
+    }
+
+    clearTimeout(pending.timer);
+    hookRequests.delete(event.data.id);
+
+    if (event.data.ok) {
+      pending.resolve(event.data.result);
+    } else {
+      pending.reject(new Error(event.data.error || "page hook request failed"));
+    }
+  });
+
+  const script = document.createElement("script");
+  script.src = chrome.runtime.getURL("src/page-hook.js");
+  script.onload = () => script.remove();
+  script.onerror = () => script.remove();
+  (document.documentElement || document.head || document.body).appendChild(script);
+  injectedHook = true;
+}
+
+function requestPageHook(type, payload = {}) {
+  ensurePageHook();
+  const id = `hook-${Date.now()}-${hookRequestId++}`;
+
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      hookRequests.delete(id);
+      reject(new Error("timed out waiting for page hook response"));
+    }, 1000);
+
+    hookRequests.set(id, { resolve, reject, timer });
+    window.postMessage({
+      source: "webssh-remote-linux-content",
+      id,
+      type,
+      ...payload
+    }, "*");
+  });
+}
+
 function findTerminalElement() {
   const selectors = [
+    "#noVNC_keyboardinput",
     ".xterm-helper-textarea",
     ".xterm textarea",
     "textarea[aria-label*='Terminal' i]",
@@ -15,6 +73,26 @@ function findTerminalElement() {
   }
 
   return null;
+}
+
+function detectAdapter() {
+  if (document.querySelector("#noVNC_keyboardinput") || document.querySelector("#noVNC_canvas") || document.title.includes("noVNC")) {
+    return "novnc";
+  }
+
+  if (document.querySelector(".xterm") || document.querySelector(".xterm-helper-textarea") || document.querySelector(".xterm-rows")) {
+    return "xterm-dom";
+  }
+
+  return "generic-dom";
+}
+
+function findNoVncKeyboardInput() {
+  return document.querySelector("#noVNC_keyboardinput");
+}
+
+function findNoVncCanvas() {
+  return document.querySelector("#noVNC_canvas") || document.querySelector("canvas");
 }
 
 function describeElement(element) {
@@ -77,6 +155,10 @@ function queryCandidates(selectors, limit) {
 }
 
 function findTerminalContainer() {
+  if (detectAdapter() === "novnc") {
+    return findNoVncKeyboardInput() || findNoVncCanvas() || document.activeElement || document.body;
+  }
+
   const input = findTerminalElement();
   return input?.closest(".xterm") || input?.closest(".terminal") || input || document.activeElement || document.body;
 }
@@ -100,7 +182,109 @@ function findReadableTerminalRoot() {
   return document.body;
 }
 
-function readTerminal(lines) {
+function findXtermObject() {
+  const candidates = [];
+  const seen = new Set();
+
+  function visit(value, depth) {
+    if (!value || (typeof value !== "object" && typeof value !== "function") || seen.has(value) || depth > 2) {
+      return;
+    }
+    seen.add(value);
+
+    if (value._core?.buffer?.active && typeof value._core.buffer.active.getLine === "function") {
+      candidates.push(value);
+      return;
+    }
+
+    const keys = [];
+    try {
+      keys.push(...Object.keys(value).slice(0, 80));
+    } catch (_) {
+      return;
+    }
+
+    for (const key of keys) {
+      if (!/(term|xterm|terminal|tty|pty|socket|app|client|core)/i.test(key)) {
+        continue;
+      }
+      try {
+        visit(value[key], depth + 1);
+      } catch (_) {
+        // Ignore hostile getters.
+      }
+    }
+  }
+
+  visit(window, 0);
+  return candidates[0] || null;
+}
+
+async function readXtermBuffer(lines) {
+  const terminal = findXtermObject();
+  const active = terminal?._core?.buffer?.active;
+  if (active && typeof active.getLine === "function") {
+    const requested = Number.isInteger(lines) && lines > 0 ? lines : 40;
+    const baseY = Number(active.baseY || 0);
+    const cursorY = Number(active.cursorY || 0);
+    const end = baseY + cursorY;
+    const start = Math.max(0, end - requested + 1);
+    const output = [];
+
+    for (let index = start; index <= end; index++) {
+      const line = active.getLine(index);
+      if (!line) {
+        continue;
+      }
+      output.push(line.translateToString(true));
+    }
+
+    return output.join("\n");
+  }
+
+  try {
+    const pageResult = await requestPageHook("read-xterm-buffer", { lines });
+    if (pageResult && pageResult.found) {
+      return pageResult.text;
+    }
+    if (pageResult && pageResult.socketText) {
+      return pageResult.socketText;
+    }
+  } catch (_) {
+    return null;
+  }
+
+  return null;
+}
+
+async function readTerminal(lines) {
+  if (detectAdapter() === "novnc") {
+    const canvas = findNoVncCanvas();
+    return {
+      text: "[webssh-remote-linux] noVNC canvas detected; DOM text read is not available for this console.",
+      lines: 1,
+      source: canvas ? "canvas" : "novnc",
+      adapter: "novnc",
+      readable: false,
+      url: location.href,
+      title: document.title
+    };
+  }
+
+  const xtermText = await readXtermBuffer(lines);
+  if (xtermText != null) {
+    const allLines = xtermText.split("\n");
+    return {
+      text: xtermText,
+      lines: allLines.length,
+      source: "xterm-buffer",
+      adapter: detectAdapter(),
+      readable: true,
+      url: location.href,
+      title: document.title
+    };
+  }
+
   const root = findReadableTerminalRoot();
   const text = (root && root.innerText ? root.innerText : "").replace(/\r/g, "");
   const allLines = text.split("\n");
@@ -109,13 +293,17 @@ function readTerminal(lines) {
     text: allLines.slice(-requested).join("\n"),
     lines: Math.min(requested, allLines.length),
     source: root ? root.tagName.toLowerCase() : null,
+    adapter: detectAdapter(),
+    readable: true,
     url: location.href,
     title: document.title
   };
 }
 
-function probeTerminal() {
+async function probeTerminal() {
   const inputSelectors = [
+    "#noVNC_keyboardinput",
+    "#noVNC_clipboard_text",
     ".xterm-helper-textarea",
     ".xterm textarea",
     "textarea[aria-label*='Terminal' i]",
@@ -124,6 +312,7 @@ function probeTerminal() {
     "[role='textbox']"
   ];
   const readableSelectors = [
+    "#noVNC_canvas",
     ".xterm-screen",
     ".xterm-rows",
     ".terminal",
@@ -132,9 +321,22 @@ function probeTerminal() {
     "canvas"
   ];
 
+  let pageHook = null;
+  if (detectAdapter() === "xterm-dom") {
+    try {
+      pageHook = await requestPageHook("hook-stats");
+    } catch (error) {
+      pageHook = {
+        found: false,
+        error: String(error && error.message ? error.message : error)
+      };
+    }
+  }
+
   return {
     url: location.href,
     title: document.title,
+    adapter: detectAdapter(),
     activeElement: describeElement(document.activeElement),
     terminalInput: describeElement(findTerminalElement()),
     readableRoot: describeElement(findReadableTerminalRoot()),
@@ -142,7 +344,10 @@ function probeTerminal() {
       hasXterm: Boolean(document.querySelector(".xterm")),
       hasRows: Boolean(document.querySelector(".xterm-rows")),
       hasHelperTextarea: Boolean(document.querySelector(".xterm-helper-textarea")),
-      hasScreen: Boolean(document.querySelector(".xterm-screen"))
+      hasScreen: Boolean(document.querySelector(".xterm-screen")),
+      hasInspectableBuffer: Boolean(findXtermObject()) || Boolean(pageHook?.terminalCount),
+      hasSocketCapture: Boolean(pageHook?.socketChunkCount),
+      pageHook
     },
     inputCandidates: queryCandidates(inputSelectors, 8),
     readableCandidates: queryCandidates(readableSelectors, 8)
@@ -161,7 +366,7 @@ function dispatchTextInput(target, text) {
   target.dispatchEvent(inputEvent);
 
   if ("value" in target) {
-    target.value += text;
+    setNativeValue(target, target.value + text);
   } else {
     target.textContent += text;
   }
@@ -173,6 +378,16 @@ function dispatchTextInput(target, text) {
       data: text
     })
   );
+}
+
+function setNativeValue(element, value) {
+  const prototype = Object.getPrototypeOf(element);
+  const descriptor = Object.getOwnPropertyDescriptor(prototype, "value");
+  if (descriptor && typeof descriptor.set === "function") {
+    descriptor.set.call(element, value);
+  } else {
+    element.value = value;
+  }
 }
 
 function dispatchPaste(target, text) {
@@ -194,11 +409,11 @@ function keySpecFromName(name) {
   const normalized = String(name || "").toLowerCase();
 
   if (normalized === "enter") {
-    return { key: "Enter", code: "Enter" };
+    return { key: "Enter", code: "Enter", keyCode: 13, which: 13, charCode: 13 };
   }
 
   if (normalized === "ctrl-c" || normalized === "ctrl+c") {
-    return { key: "c", code: "KeyC", ctrlKey: true };
+    return { key: "c", code: "KeyC", keyCode: 67, which: 67, charCode: 3, ctrlKey: true };
   }
 
   throw new Error(`unsupported key: ${name}`);
@@ -210,6 +425,9 @@ function dispatchKeyboard(target, keySpec) {
   const options = {
     key: keySpec.key,
     code: keySpec.code || keySpec.key,
+    keyCode: keySpec.keyCode || 0,
+    which: keySpec.which || keySpec.keyCode || 0,
+    charCode: keySpec.charCode || 0,
     bubbles: true,
     cancelable: true,
     ctrlKey: Boolean(keySpec.ctrlKey),
@@ -220,6 +438,24 @@ function dispatchKeyboard(target, keySpec) {
 
   for (const type of ["keydown", "keypress", "keyup"]) {
     target.dispatchEvent(new KeyboardEvent(type, options));
+  }
+}
+
+function dispatchTextAsKeyboard(target, text) {
+  for (const char of text) {
+    if (char === "\n") {
+      dispatchKeyboard(target, keySpecFromName("enter"));
+      continue;
+    }
+
+    dispatchKeyboard(target, {
+      key: char,
+      code: char.length === 1 && /[a-z]/i.test(char) ? `Key${char.toUpperCase()}` : char,
+      keyCode: char.length === 1 ? char.toUpperCase().charCodeAt(0) : 0,
+      which: char.length === 1 ? char.toUpperCase().charCodeAt(0) : 0,
+      charCode: char.length === 1 ? char.charCodeAt(0) : 0,
+      shiftKey: char.length === 1 && char.toUpperCase() === char && char.toLowerCase() !== char
+    });
   }
 }
 
@@ -246,6 +482,10 @@ function dispatchTerminalKey(keySpec) {
 }
 
 function sendTerminal(text, enter) {
+  if (detectAdapter() === "novnc") {
+    return sendNoVncTerminal(text, enter);
+  }
+
   const target = findTerminalElement();
   if (!target) {
     throw new Error("no terminal input element found");
@@ -268,6 +508,31 @@ function sendTerminal(text, enter) {
   };
 }
 
+function sendNoVncTerminal(text, enter) {
+  const target = findNoVncKeyboardInput() || findNoVncCanvas();
+  if (!target) {
+    throw new Error("no noVNC keyboard input or canvas found");
+  }
+
+  target.focus?.();
+  dispatchTextInput(target, text);
+  dispatchTextAsKeyboard(target, text);
+  if (enter) {
+    dispatchKeyboard(target, keySpecFromName("enter"));
+  }
+
+  return {
+    sent: true,
+    enter: Boolean(enter),
+    adapter: "novnc",
+    readable: false,
+    target: target.tagName.toLowerCase(),
+    id: target.id || "",
+    url: location.href,
+    title: document.title
+  };
+}
+
 function sendKey(name) {
   const target = findTerminalContainer();
   if (!target) {
@@ -279,6 +544,7 @@ function sendKey(name) {
   return {
     sent: true,
     key: name,
+    adapter: detectAdapter(),
     target: target.tagName.toLowerCase(),
     url: location.href,
     title: document.title
@@ -292,16 +558,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     if (message.type === "webssh.probe") {
-      sendResponse({
-        ok: true,
-        result: probeTerminal()
-      });
-      return false;
+      probeTerminal()
+        .then((result) => sendResponse({ ok: true, result }))
+        .catch((error) => sendResponse({ ok: false, error: String(error.message || error) }));
+      return true;
     }
 
     if (message.type === "webssh.read") {
-      sendResponse({ ok: true, result: readTerminal(message.lines) });
-      return false;
+      readTerminal(message.lines)
+        .then((result) => sendResponse({ ok: true, result }))
+        .catch((error) => sendResponse({ ok: false, error: String(error.message || error) }));
+      return true;
     }
 
     if (message.type === "webssh.send") {

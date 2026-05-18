@@ -2,13 +2,23 @@ const NATIVE_HOST = "com.webssh_remote_linux.bridge";
 
 let nativePort = null;
 let boundTabId = null;
+let lastNativeError = "";
+let nextNativeRequestId = 1;
+const pendingNativeMessages = new Map();
 
 function connectNative() {
   if (nativePort) {
     return nativePort;
   }
 
-  nativePort = chrome.runtime.connectNative(NATIVE_HOST);
+  try {
+    nativePort = chrome.runtime.connectNative(NATIVE_HOST);
+    lastNativeError = "";
+  } catch (error) {
+    nativePort = null;
+    lastNativeError = String(error && error.message ? error.message : error);
+    throw error;
+  }
 
   nativePort.onMessage.addListener((message) => {
     handleNativeMessage(message).catch((error) => {
@@ -21,7 +31,14 @@ function connectNative() {
   });
 
   nativePort.onDisconnect.addListener(() => {
+    const error = chrome.runtime.lastError;
+    lastNativeError = error && error.message ? error.message : "native host disconnected";
     nativePort = null;
+    for (const pending of pendingNativeMessages.values()) {
+      clearTimeout(pending.timer);
+      pending.reject(new Error(lastNativeError));
+    }
+    pendingNativeMessages.clear();
   });
 
   return nativePort;
@@ -41,6 +58,8 @@ async function sendToBoundTab(payload) {
 }
 
 async function sendMessageToTab(tabId, payload) {
+  await injectPageHelpers(tabId);
+
   try {
     return await sendTabMessageWithTimeout(tabId, payload);
   } catch (error) {
@@ -61,6 +80,18 @@ function sendTabMessageWithTimeout(tabId, payload) {
   ]);
 }
 
+async function injectPageHelpers(tabId) {
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ["src/page-hook.js"],
+      world: "MAIN"
+    });
+  } catch (_) {
+    // Some pages disallow MAIN-world injection. Content script has a fallback.
+  }
+}
+
 async function handleNativeMessage(message) {
   if (!message || typeof message !== "object") {
     throw new Error("invalid native message");
@@ -78,6 +109,12 @@ async function handleNativeMessage(message) {
   }
 
   if (message.type === "bridge.pong") {
+    const pending = pendingNativeMessages.get(message.id);
+    if (pending) {
+      clearTimeout(pending.timer);
+      pendingNativeMessages.delete(message.id);
+      pending.resolve(message);
+    }
     return;
   }
 
@@ -124,6 +161,8 @@ async function handleBridgeRequest(message) {
 }
 
 async function bindActiveTab() {
+  tryConnectNative();
+
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab || tab.id == null) {
     throw new Error("no active tab");
@@ -135,6 +174,9 @@ async function bindActiveTab() {
 }
 
 async function getStatus(existingTab) {
+  tryConnectNative();
+
+  const nativeHealth = await checkNativeHealth();
   let tab = existingTab || null;
   if (boundTabId != null && !tab) {
     try {
@@ -145,7 +187,9 @@ async function getStatus(existingTab) {
   }
 
   return {
-    nativeHost: nativePort ? "connected" : "disconnected",
+    nativeHost: nativeHealth.ok ? "connected" : "disconnected",
+    nativeHostError: nativeHealth.ok ? "" : nativeHealth.error,
+    nativeHostResult: nativeHealth.result || null,
     boundTabId,
     tab: tab
       ? {
@@ -155,6 +199,47 @@ async function getStatus(existingTab) {
         }
       : null
   };
+}
+
+function tryConnectNative() {
+  if (nativePort) {
+    return;
+  }
+
+  try {
+    connectNative();
+  } catch (_) {
+    // getStatus reports lastNativeError; requests that require native messaging
+    // will fail through the native messaging path.
+  }
+}
+
+async function checkNativeHealth() {
+  if (!nativePort) {
+    return { ok: false, error: lastNativeError || "native host is not connected" };
+  }
+
+  const id = `native-ping-${Date.now()}-${nextNativeRequestId++}`;
+  try {
+    const response = await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        pendingNativeMessages.delete(id);
+        reject(new Error("timed out waiting for native host ping"));
+      }, 1500);
+
+      pendingNativeMessages.set(id, { resolve, reject, timer });
+      nativePort.postMessage({ id, type: "bridge.ping" });
+    });
+
+    return {
+      ok: Boolean(response && response.ok),
+      result: response && response.result ? response.result : null,
+      error: response && response.error ? response.error : ""
+    };
+  } catch (error) {
+    lastNativeError = String(error && error.message ? error.message : error);
+    return { ok: false, error: lastNativeError };
+  }
 }
 
 chrome.runtime.onInstalled.addListener(() => {

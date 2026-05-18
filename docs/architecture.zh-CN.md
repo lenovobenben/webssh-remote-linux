@@ -11,11 +11,13 @@ webssh-remote-linux/
     src/
       background.js           service worker, Native Messaging and tab routing
       content.js              WebSSH page adapter
+      page-hook.js            MAIN-world hook for xterm.js/WebSocket output
       popup.html              bind active WebSSH tab
       popup.js
       popup.css
   native-host/
     host.js                   Chrome Native Messaging host and loopback bridge
+    host-wrapper.sh           stable native host launcher with Node PATH
     install-host.sh           install user-level native host manifest
     uninstall-host.sh         remove user-level native host manifest
     com.webssh_remote_linux.bridge.json
@@ -81,7 +83,12 @@ scripts/*.sh
 - 读取可见终端文本。
 - 向终端输入元素派发文本和 Enter。
 
-当前 content script 是通用骨架，只做启发式 DOM 识别。后续应该为具体 WebSSH 产品或 xterm.js 实例增加 adapter。
+`page-hook.js` 会在 Chrome 的 `MAIN` world、`document_start` 阶段注入页面。它做两类读取：
+
+- 如果能找到页面里的 xterm.js `Terminal` 实例，就直接读取 xterm buffer。
+- 如果 xterm 使用 canvas renderer 且实例被打包闭包隐藏，就 hook 页面 WebSocket，缓存服务端回传的 PTY 输出流，再做 ANSI 清理。
+
+这条路径不是 OCR，也不依赖 canvas 像素识别。它适合 ttyd/xterm.js 这类浏览器终端，但仍然不是所有 WebSSH 产品的通用保证。后续接入新产品时，先用 `probe.sh` 判断是否有 `hasSocketCapture` 或可读 DOM。
 
 ## Native host
 
@@ -203,11 +210,47 @@ scripts/probe.sh
 
 这些信息用于判断是否可以沿用通用 xterm-like adapter，或者是否需要为具体产品增加 adapter。
 
+## noVNC 控制台
+
+Vultr Web Console 这类页面通常是 noVNC。终端画面在 `canvas` 上，DOM 中没有真实终端文本，因此 `read.sh` 不能像 xterm DOM 那样读取屏幕内容。
+
+当前 noVNC 支持范围：
+
+- `probe.sh` 可以识别 `adapter: novnc`、canvas、`#noVNC_keyboardinput`。
+- `read.sh` 会明确返回 noVNC canvas 不支持 DOM 读屏。
+- `send.sh` / `key.sh` 会优先尝试向 `#noVNC_keyboardinput` 或 canvas 派发输入事件。
+
+noVNC 写入能力需要在真实测试机上谨慎验证；读屏后续需要 OCR、noVNC framebuffer hook，或其他独立方案。
+
+## ttyd / xterm.js 控制台
+
+ttyd 默认使用 xterm.js，现代版本常用 canvas renderer，所以 `.xterm-screen` 里也可能没有可读文本。当前 bridge 的可用路径是：
+
+```text
+page-hook.js
+  -> MAIN-world WebSocket hook
+  -> capture PTY output frames
+  -> strip ttyd control frame prefix and ANSI escapes
+  -> read.sh / run.sh
+```
+
+在 Vultr 测试机上，`probe.sh` 看到下面字段时表示这条路径可用：
+
+```json
+{
+  "xterm": {
+    "hasSocketCapture": true
+  }
+}
+```
+
+然后 `run.sh 'df -h'` 能拿到 marker 范围内的命令输出和远端退出码。
+
 ## 下一步
 
 最重要的后续工作：
 
-- 增加具体 WebSSH/xterm.js adapter，不依赖通用 DOM 猜测。
+- 增加更多具体 WebSSH/xterm.js adapter，并把 WebSocket 帧解析做成可插拔。
 - 增加 extension 页面里的显式 session 选择和状态展示。
 - 增加 shellcheck、eslint 或最小测试。
 - 完善 Native Messaging 安装文档和 Chrome extension 开发调试流程。

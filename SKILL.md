@@ -46,6 +46,10 @@ scripts/logs.sh last 10
 
 `probe.sh` inspects the bound page and reports candidate terminal input/readable elements. Use it before adapting a new WebSSH product.
 
+For noVNC/canvas consoles, `read.sh` may report that DOM text read is unavailable. Do not assume screen text can be read from these pages; use `probe.sh` first and avoid write tests unless the user explicitly approves. Do not use OCR as the default path.
+
+For ttyd/xterm.js pages, canvas rendering can make DOM reads empty. This project can still read output when `probe.sh` reports `xterm.hasSocketCapture: true`; in that case the page hook is reading the terminal output stream before it is rendered.
+
 `read.sh` reads recent terminal output from the bound WebSSH tab.
 
 `send.sh` sends one command and presses Enter. Use it for commands that intentionally change shell state, such as `cd` or `export`, and commands expected to run for a long time.
