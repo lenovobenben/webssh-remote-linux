@@ -80,6 +80,12 @@
       }
 
       function execute(command) {
+        if (executeWrappedRun(command)) {
+          current = "";
+          render();
+          return;
+        }
+
         append(`${prompt}${command}`);
 
         if (command === "clear") {
@@ -100,6 +106,51 @@
 
         current = "";
         render();
+      }
+
+      function executeWrappedRun(command) {
+        const beginMatch = command.match(/printf '\\n%s\\n' '([^']+_BEGIN__)'/);
+        const encodedMatch = command.match(/printf '%s' '([^']+)' \| base64 -d \| bash/);
+        const endMatch = command.match(/printf '\\n%s:%s\\n' '([^']+_END__)'/);
+
+        if (!beginMatch || !encodedMatch || !endMatch) {
+          return false;
+        }
+
+        const begin = beginMatch[1];
+        const encoded = encodedMatch[1];
+        const end = endMatch[1];
+        const decoded = atob(encoded);
+
+        append(`${prompt}${command}`);
+        append("");
+        append(begin);
+        for (const line of runMockCommand(decoded)) {
+          append(line);
+        }
+        append(`${end}:0`);
+        return true;
+      }
+
+      function runMockCommand(command) {
+        const output = [];
+        const parts = command.split(";").map((part) => part.trim()).filter(Boolean);
+
+        for (const part of parts) {
+          if (part === "pwd") {
+            output.push("/home/mock");
+          } else if (part === "hostname") {
+            output.push("mock-webssh");
+          } else if (part === "date") {
+            output.push(new Date().toString());
+          } else if (part.startsWith("echo ")) {
+            output.push(part.slice(5));
+          } else {
+            output.push(`mock: command not found: ${part}`);
+          }
+        }
+
+        return output;
       }
 
       function insertText(text) {

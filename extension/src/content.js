@@ -129,6 +129,28 @@ function dispatchKeyboard(target, keySpec) {
   }
 }
 
+function dispatchTerminalKey(keySpec) {
+  const input = findTerminalElement();
+  const container = findTerminalContainer();
+  const targets = [];
+
+  if (input) {
+    targets.push(input);
+  }
+
+  if (container && container !== input) {
+    targets.push(container);
+  }
+
+  if (targets.length === 0) {
+    targets.push(document.activeElement || document.body);
+  }
+
+  for (const target of targets) {
+    dispatchKeyboard(target, keySpec);
+  }
+}
+
 function sendTerminal(text, enter) {
   const target = findTerminalElement();
   if (!target) {
@@ -140,7 +162,7 @@ function sendTerminal(text, enter) {
     dispatchTextInput(target, text);
   }
   if (enter) {
-    dispatchKeyboard(findTerminalContainer(), keySpecFromName("enter"));
+    dispatchTerminalKey(keySpecFromName("enter"));
   }
 
   return {
@@ -158,7 +180,7 @@ function sendKey(name) {
     throw new Error("no terminal target found");
   }
 
-  dispatchKeyboard(target, keySpecFromName(name));
+  dispatchTerminalKey(keySpecFromName(name));
 
   return {
     sent: true,
@@ -185,12 +207,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           title: document.title
         }
       });
-      return true;
+      return false;
     }
 
     if (message.type === "webssh.read") {
       sendResponse({ ok: true, result: readTerminal(message.lines) });
-      return true;
+      return false;
     }
 
     if (message.type === "webssh.send") {
@@ -198,7 +220,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         ok: true,
         result: sendTerminal(message.text || "", message.enter !== false)
       });
-      return true;
+      return false;
     }
 
     if (message.type === "webssh.key") {
@@ -206,12 +228,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         ok: true,
         result: sendKey(message.key)
       });
-      return true;
+      return false;
     }
 
     return false;
   } catch (error) {
     sendResponse({ ok: false, error: String(error.message || error) });
-    return true;
+    return false;
   }
 });

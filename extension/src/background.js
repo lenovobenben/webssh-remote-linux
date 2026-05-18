@@ -37,7 +37,28 @@ async function sendToBoundTab(payload) {
     throw new Error("no WebSSH tab is bound");
   }
 
-  return chrome.tabs.sendMessage(boundTabId, payload);
+  return sendMessageToTab(boundTabId, payload);
+}
+
+async function sendMessageToTab(tabId, payload) {
+  try {
+    return await sendTabMessageWithTimeout(tabId, payload);
+  } catch (error) {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ["src/content.js"]
+    });
+    return sendTabMessageWithTimeout(tabId, payload);
+  }
+}
+
+function sendTabMessageWithTimeout(tabId, payload) {
+  return Promise.race([
+    chrome.tabs.sendMessage(tabId, payload),
+    new Promise((_, reject) => {
+      setTimeout(() => reject(new Error("timed out waiting for content script response")), 3000);
+    })
+  ]);
 }
 
 async function handleNativeMessage(message) {
@@ -103,7 +124,7 @@ async function bindActiveTab() {
   }
 
   boundTabId = tab.id;
-  await chrome.tabs.sendMessage(boundTabId, { type: "webssh.probe" });
+  await sendMessageToTab(boundTabId, { type: "webssh.probe" });
   return getStatus(tab);
 }
 
