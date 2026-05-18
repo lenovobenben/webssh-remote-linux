@@ -44,3 +44,12 @@ Enterprise Linux Server
 ## Documentation
 
 - [Technical reference (zh-CN)](docs/reference.zh-CN.md)
+- [Code architecture (zh-CN)](docs/architecture.zh-CN.md)
+
+## Current Skeleton
+
+The initial code layout contains:
+
+- `extension/`: Chrome Manifest V3 extension.
+- `native-host/`: Native Messaging host plus loopback bridge for local scripts.
+- `scripts/`: stable `read.sh`, `send.sh`, `run.sh`, and `logs.sh` entrypoints for AI agents.

@@ -1,0 +1,9 @@
+{
+  "name": "com.webssh_remote_linux.bridge",
+  "description": "Native bridge for webssh-remote-linux",
+  "path": "/ABSOLUTE/PATH/TO/webssh-remote-linux/native-host/host.js",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://REPLACE_WITH_EXTENSION_ID/"
+  ]
+}
