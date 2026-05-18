@@ -29,6 +29,7 @@ Scripts live in this skill directory:
 scripts/status.sh
 scripts/doctor.sh
 scripts/smoke.sh
+scripts/probe.sh
 scripts/read.sh 40
 scripts/send.sh '<command>'
 scripts/key.sh enter
@@ -42,6 +43,8 @@ scripts/logs.sh last 10
 `doctor.sh` runs a broader install and connectivity diagnosis. Use it when setup or bridge communication looks broken.
 
 `smoke.sh` runs a bound-tab smoke test through `doctor`, `read`, `send`, `run`, and `key`. Use it after the user has bound a mock or real WebSSH tab.
+
+`probe.sh` inspects the bound page and reports candidate terminal input/readable elements. Use it before adapting a new WebSSH product.
 
 `read.sh` reads recent terminal output from the bound WebSSH tab.
 
@@ -97,6 +100,7 @@ Anti-bypass rule: Do not set `WEBSSH_PROD_APPROVAL_EXPECTED_DIGIT`, `WEBSSH_PROD
 ## Operating Rules
 
 - Start with `scripts/status.sh` and `scripts/read.sh` unless the user gave a precise command to run.
+- Use `scripts/probe.sh` before changing selectors or adapting a new WebSSH page.
 - Treat the WebSSH tab as shared state. Current host, user, cwd, foreground command, kubeconfig, and prompts matter.
 - Prefer `run.sh` for short non-interactive inspection commands because it returns scoped output and exit code.
 - Prefer `send.sh` for `cd`, `export`, long-running commands, or commands whose output will be observed separately.

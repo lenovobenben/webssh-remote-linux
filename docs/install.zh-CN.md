@@ -118,6 +118,7 @@ scripts/smoke.sh
 冒烟测试会执行：
 
 - `scripts/doctor.sh`
+- `scripts/probe.sh`
 - `scripts/read.sh`
 - `scripts/send.sh 'pwd'`
 - `scripts/run.sh 'pwd; hostname; date'`

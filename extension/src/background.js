@@ -92,6 +92,12 @@ async function handleBridgeRequest(message) {
     return getStatus();
   }
 
+  if (action === "probe") {
+    return sendToBoundTab({
+      type: "webssh.probe"
+    });
+  }
+
   if (action === "read") {
     return sendToBoundTab({
       type: "webssh.read",

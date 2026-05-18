@@ -17,6 +17,65 @@ function findTerminalElement() {
   return null;
 }
 
+function describeElement(element) {
+  if (!element) {
+    return null;
+  }
+
+  const rect = element.getBoundingClientRect();
+  return {
+    tag: element.tagName.toLowerCase(),
+    id: element.id || "",
+    className: normalizeClassName(element.className),
+    ariaLabel: element.getAttribute("aria-label") || "",
+    role: element.getAttribute("role") || "",
+    contentEditable: element.getAttribute("contenteditable") || "",
+    visible: Boolean(rect.width || rect.height),
+    rect: {
+      x: Math.round(rect.x),
+      y: Math.round(rect.y),
+      width: Math.round(rect.width),
+      height: Math.round(rect.height)
+    },
+    textSample: String(element.innerText || element.value || "").slice(0, 120)
+  };
+}
+
+function normalizeClassName(className) {
+  if (typeof className === "string") {
+    return className;
+  }
+
+  if (className && typeof className.baseVal === "string") {
+    return className.baseVal;
+  }
+
+  return "";
+}
+
+function queryCandidates(selectors, limit) {
+  const results = [];
+  const seen = new Set();
+
+  for (const selector of selectors) {
+    for (const element of document.querySelectorAll(selector)) {
+      if (seen.has(element)) {
+        continue;
+      }
+      seen.add(element);
+      results.push({
+        selector,
+        element: describeElement(element)
+      });
+      if (results.length >= limit) {
+        return results;
+      }
+    }
+  }
+
+  return results;
+}
+
 function findTerminalContainer() {
   const input = findTerminalElement();
   return input?.closest(".xterm") || input?.closest(".terminal") || input || document.activeElement || document.body;
@@ -52,6 +111,41 @@ function readTerminal(lines) {
     source: root ? root.tagName.toLowerCase() : null,
     url: location.href,
     title: document.title
+  };
+}
+
+function probeTerminal() {
+  const inputSelectors = [
+    ".xterm-helper-textarea",
+    ".xterm textarea",
+    "textarea[aria-label*='Terminal' i]",
+    "textarea",
+    "[contenteditable='true']",
+    "[role='textbox']"
+  ];
+  const readableSelectors = [
+    ".xterm-screen",
+    ".xterm-rows",
+    ".terminal",
+    "[class*='terminal' i]",
+    "pre",
+    "canvas"
+  ];
+
+  return {
+    url: location.href,
+    title: document.title,
+    activeElement: describeElement(document.activeElement),
+    terminalInput: describeElement(findTerminalElement()),
+    readableRoot: describeElement(findReadableTerminalRoot()),
+    xterm: {
+      hasXterm: Boolean(document.querySelector(".xterm")),
+      hasRows: Boolean(document.querySelector(".xterm-rows")),
+      hasHelperTextarea: Boolean(document.querySelector(".xterm-helper-textarea")),
+      hasScreen: Boolean(document.querySelector(".xterm-screen"))
+    },
+    inputCandidates: queryCandidates(inputSelectors, 8),
+    readableCandidates: queryCandidates(readableSelectors, 8)
   };
 }
 
@@ -200,12 +294,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === "webssh.probe") {
       sendResponse({
         ok: true,
-        result: {
-          hasInput: Boolean(findTerminalElement()),
-          readableSource: findReadableTerminalRoot()?.tagName.toLowerCase() || null,
-          url: location.href,
-          title: document.title
-        }
+        result: probeTerminal()
       });
       return false;
     }

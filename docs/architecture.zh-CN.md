@@ -23,6 +23,7 @@ webssh-remote-linux/
     doctor.sh                 check install, bridge, extension, and bound tab
     smoke.sh                  run a bound-tab smoke test
     status.sh                 check native host and bound tab status
+    probe.sh                  inspect terminal DOM candidates in the bound tab
     read.sh                   read recent terminal output
     send.sh                   send one command and Enter
     key.sh                    send a supported terminal key
@@ -122,6 +123,7 @@ export WEBSSH_REMOTE_ENV=non-production
 scripts/status.sh
 scripts/doctor.sh
 scripts/smoke.sh
+scripts/probe.sh
 scripts/read.sh 40
 scripts/send.sh 'pwd'
 scripts/key.sh ctrl-c
@@ -181,6 +183,25 @@ scripts/status.sh
 export WEBSSH_REMOTE_ENV=non-production
 scripts/run.sh 'pwd; hostname; date'
 ```
+
+## 真实 WebSSH 适配前探测
+
+接入新的 WebSSH 产品前，先绑定目标 tab，然后运行：
+
+```bash
+scripts/probe.sh
+```
+
+它会返回：
+
+- 当前 URL 和 title
+- active element
+- 当前识别到的 terminal input
+- 当前识别到的 readable root
+- xterm.js 常见 DOM 迹象
+- input/readable 候选元素列表
+
+这些信息用于判断是否可以沿用通用 xterm-like adapter，或者是否需要为具体产品增加 adapter。
 
 ## 下一步
 

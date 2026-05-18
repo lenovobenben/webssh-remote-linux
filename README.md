@@ -54,7 +54,7 @@ The initial code layout contains:
 
 - `extension/`: Chrome Manifest V3 extension.
 - `native-host/`: Native Messaging host plus loopback bridge for local scripts.
-- `scripts/`: stable `status.sh`, `read.sh`, `send.sh`, `key.sh`, `run.sh`, and `logs.sh` entrypoints for AI agents.
+- `scripts/`: stable `status.sh`, `probe.sh`, `read.sh`, `send.sh`, `key.sh`, `run.sh`, and `logs.sh` entrypoints for AI agents.
 
 Install the native host after loading the unpacked extension:
 

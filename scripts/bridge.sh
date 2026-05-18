@@ -76,6 +76,19 @@ process.stdout.write(JSON.stringify(payload));
 '
 }
 
+webssh_simple_payload() {
+  local action="$1"
+  local request_id="$2"
+
+  ACTION="$action" REQUEST_ID="$request_id" node -e '
+const payload = {
+  action: process.env.ACTION,
+  request_id: process.env.REQUEST_ID
+};
+process.stdout.write(JSON.stringify(payload));
+'
+}
+
 webssh_bridge_request() {
   local payload="$1"
   local url token
