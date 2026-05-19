@@ -2,6 +2,12 @@
 
 这是当前代码骨架的说明。目标是先把 WebSSH bridge 的关键边界落成可演进的目录结构，而不是一次性支持所有 WebSSH 产品。
 
+## 当前状态
+
+当前项目仍是原型状态。它已经通过本地 mock、WebSocket/canvas fixture、ttyd/xterm.js demo 验证了基本链路，但尚未在真实企业级 WebSSH 产品中验证。
+
+如果用户现在要直接使用，通常需要下载代码后针对自己的 WebSSH 页面做二次开发。不同企业 WebSSH 可能有不同 DOM 结构、canvas/noVNC 渲染方式、WebSocket 协议、CSP 和扩展访问限制，不能假设当前 adapter 开箱即用。
+
 ## 目录布局
 
 ```text
@@ -38,7 +44,10 @@ webssh-remote-linux/
     reference.zh-CN.md
     architecture.zh-CN.md
   examples/
-    mock-webssh.html          local page for extension and bridge smoke tests
+    mock-webssh.html          local DOM-text terminal fixture
+    mock-websocket-terminal.html
+                              local canvas/WebSocket terminal fixture
+    mock-websocket-server.js  local fixture server for WebSocket capture tests
 ```
 
 ## 通信链路
@@ -89,6 +98,31 @@ scripts/*.sh
 - 如果 xterm 使用 canvas renderer 且实例被打包闭包隐藏，就 hook 页面 WebSocket，缓存服务端回传的 PTY 输出流，再做 ANSI 清理。
 
 这条路径不是 OCR，也不依赖 canvas 像素识别。它适合 ttyd/xterm.js 这类浏览器终端，但仍然不是所有 WebSSH 产品的通用保证。后续接入新产品时，先用 `probe.sh` 判断是否有 `hasSocketCapture` 或可读 DOM。
+
+## Client adapter model
+
+这个项目只做客户端 bridge。它假设用户已经在浏览器里打开并登录了企业 WebSSH 页面；项目不负责部署、代理或维护远端 WebSSH 服务。
+
+浏览器侧读取能力按来源分层：
+
+```text
+readMode=dom-text
+  DOM 中已有可读终端文本，例如 mock 页面或少数 DOM renderer。
+
+readMode=xterm-buffer
+  能拿到页面里的 xterm.js Terminal 实例，直接读取 buffer。
+
+readMode=websocket-stream
+  xterm 实例不可见、DOM 也不可读，但能在 MAIN world 捕获 WebSocket 返回的 PTY 输出流。
+
+readMode=unavailable
+  例如 noVNC/canvas 控制台，当前没有可靠文本通道。
+
+readMode=unknown
+  页面看起来像终端，但当前 adapter 没找到稳定读取路径。
+```
+
+`probe.sh` 会暴露 `adapter`、`readMode`、`readable` 和 `capabilities`。后续适配企业 WebSSH 时，先看这些字段，再决定是否需要新增 adapter，而不是直接为某个平台写死流程。
 
 ## Native host
 
@@ -191,6 +225,31 @@ export WEBSSH_REMOTE_ENV=non-production
 scripts/run.sh 'pwd; hostname; date'
 ```
 
+`examples/mock-websocket-terminal.html` 和 `examples/mock-websocket-server.js` 用于测试 canvas/WebSocket 场景。这个 fixture 模拟“页面有 xterm-like 输入元素，但终端输出只画到 canvas，DOM 中没有可读文本”的页面。它只用于本地回归，不是产品服务端方案。
+
+启动方式：
+
+```bash
+node examples/mock-websocket-server.js
+```
+
+然后打开：
+
+```text
+http://127.0.0.1:18081/
+```
+
+绑定后，`probe.sh` 应该返回：
+
+```json
+{
+  "readMode": "websocket-stream",
+  "capabilities": {
+    "websocketStream": true
+  }
+}
+```
+
 ## 真实 WebSSH 适配前探测
 
 接入新的 WebSSH 产品前，先绑定目标 tab，然后运行：
@@ -202,6 +261,12 @@ scripts/probe.sh
 它会返回：
 
 - 当前 URL 和 title
+- `adapter` / `readMode` / `readable`
+- `capabilities.domText`
+- `capabilities.xtermBuffer`
+- `capabilities.websocketStream`
+- `capabilities.pageHook`
+- `capabilities.noVncCanvas`
 - active element
 - 当前识别到的 terminal input
 - 当前识别到的 readable root
@@ -220,7 +285,7 @@ Vultr Web Console 这类页面通常是 noVNC。终端画面在 `canvas` 上，D
 - `read.sh` 会明确返回 noVNC canvas 不支持 DOM 读屏。
 - `send.sh` / `key.sh` 会优先尝试向 `#noVNC_keyboardinput` 或 canvas 派发输入事件。
 
-noVNC 写入能力需要在真实测试机上谨慎验证；读屏后续需要 OCR、noVNC framebuffer hook，或其他独立方案。
+noVNC 写入能力需要在真实测试机上谨慎验证；读屏后续需要 noVNC framebuffer hook 或其他独立文本通道。OCR 不作为默认方案。
 
 ## ttyd / xterm.js 控制台
 

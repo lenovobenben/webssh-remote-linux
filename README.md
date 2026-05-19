@@ -2,6 +2,12 @@
 
 Bridge local AI agents to already-authenticated enterprise WebSSH sessions.
 
+## Current Status
+
+This project is an experimental client-side bridge. It has been tested with local fixtures and a ttyd/xterm.js demo, but it has not been validated against a real enterprise WebSSH product.
+
+If you want to use it today, expect to read the code and adapt the browser-side adapter for your own WebSSH page. Different enterprise WebSSH products may hide terminal state differently, use canvas/noVNC rendering, customize WebSocket protocols, or block extension access.
+
 ## Background
 
 Modern AI coding agents work extremely well on local terminals and standard SSH environments.
@@ -26,6 +32,8 @@ This project exists to bridge that gap.
 # What This Project Does
 
 `webssh-remote-linux` attaches to an already-opened browser WebSSH session and exposes it to local AI workflows.
+
+It is a client-side bridge. It does not deploy, proxy, or operate a WebSSH server. Test fixtures in `examples/` exist only to validate browser adapter behavior without access to a real enterprise WebSSH product.
 
 Typical workflow:
 
@@ -86,4 +94,16 @@ python3 -m http.server 18080
 
 ```text
 http://127.0.0.1:18080/examples/mock-webssh.html
+```
+
+For the canvas/WebSocket output-capture fixture, run:
+
+```bash
+node examples/mock-websocket-server.js
+```
+
+Then open:
+
+```text
+http://127.0.0.1:18081/
 ```

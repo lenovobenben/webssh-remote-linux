@@ -5,7 +5,8 @@
 
   const state = {
     terminals: [],
-    socketChunks: []
+    socketChunks: [],
+    webSocketPatched: false
   };
 
   const textDecoder = new TextDecoder("utf-8", { fatal: false });
@@ -98,6 +99,7 @@
     });
 
     window.WebSocket = WrappedWebSocket;
+    state.webSocketPatched = true;
   }
 
   function rememberTerminal(candidate) {
@@ -223,6 +225,7 @@
       scan();
       return {
         terminalCount: state.terminals.length,
+        webSocketPatched: state.webSocketPatched,
         socketChunkCount: state.socketChunks.length,
         socketTextSample: readSocketText(5).slice(-500)
       };

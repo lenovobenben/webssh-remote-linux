@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Mock WebSocket WebSSH Terminal</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+
+      body {
+        margin: 0;
+        background: #111827;
+      }
+
+      .terminal {
+        min-height: 100vh;
+        position: relative;
+      }
+
+      .xterm {
+        min-height: 100vh;
+        position: relative;
+      }
+
+      canvas {
+        display: block;
+        width: 100vw;
+        height: 100vh;
+      }
+
+      .xterm-helper-textarea {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        opacity: 0;
+        left: 0;
+        top: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="terminal">
+      <div class="xterm" id="terminal">
+        <canvas id="screen"></canvas>
+        <textarea class="xterm-helper-textarea" aria-label="Terminal input" id="input"></textarea>
+      </div>
+    </main>
+    <script>
+      const canvas = document.getElementById("screen");
+      const input = document.getElementById("input");
+      const context = canvas.getContext("2d");
+      const socket = new WebSocket(`ws://${location.host}/terminal`);
+      let current = "";
+      let screenText = "";
+
+      function resize() {
+        canvas.width = window.innerWidth * devicePixelRatio;
+        canvas.height = window.innerHeight * devicePixelRatio;
+        context.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+        render();
+      }
+
+      function normalizePayload(payload) {
+        if (payload.charCodeAt(0) >= 0 && payload.charCodeAt(0) <= 5) {
+          return payload.slice(1);
+        }
+        if (/^[0-5]/.test(payload)) {
+          return payload.slice(1);
+        }
+        return payload;
+      }
+
+      function append(text) {
+        screenText += text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+        const lines = screenText.split("\n");
+        if (lines.length > 200) {
+          screenText = lines.slice(-200).join("\n");
+        }
+        render();
+      }
+
+      function render() {
+        context.fillStyle = "#111827";
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        context.fillStyle = "#d1d5db";
+        context.font = "16px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+        const lines = screenText.split("\n").slice(-45);
+        lines.forEach((line, index) => {
+          context.fillText(line, 12, 24 + index * 20);
+        });
+      }
+
+      function sendCurrent() {
+        socket.send(current);
+        current = "";
+        input.value = "";
+      }
+
+      function insertText(text) {
+        current += text;
+        input.value = "";
+      }
+
+      socket.addEventListener("message", async (event) => {
+        const text = typeof event.data === "string" ? event.data : await event.data.text();
+        append(normalizePayload(text));
+      });
+
+      input.addEventListener("paste", (event) => {
+        event.preventDefault();
+        insertText(event.clipboardData.getData("text/plain"));
+      });
+
+      input.addEventListener("input", () => {
+        if (input.value) {
+          insertText(input.value);
+        }
+      });
+
+      input.addEventListener("keydown", (event) => {
+        if (event.ctrlKey && event.key.toLowerCase() === "c") {
+          event.preventDefault();
+          current = "";
+          socket.send("");
+          return;
+        }
+
+        if (event.key === "Enter") {
+          event.preventDefault();
+          sendCurrent();
+        }
+      });
+
+      document.getElementById("terminal").addEventListener("click", () => {
+        input.focus();
+      });
+      window.addEventListener("resize", resize);
+      resize();
+      input.focus();
+    </script>
+  </body>
+</html>

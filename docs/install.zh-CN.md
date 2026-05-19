@@ -2,6 +2,8 @@
 
 这份文档描述开发期最短安装路径。目标是先验证本机脚本、Chrome extension、Native Messaging host 和 mock WebSSH 页面之间的链路。
 
+当前项目不是面向终端用户的开箱即用产品。它尚未在真实企业级 WebSSH 产品中验证；如果要用于自己的 WebSSH 页面，通常需要阅读代码并二次开发 adapter。
+
 ## 前置条件
 
 本机需要：
@@ -85,6 +87,39 @@ http://127.0.0.1:18080/examples/mock-webssh.html
       "title": "Mock WebSSH Terminal"
     }
   }
+}
+```
+
+这个 mock 使用 DOM 文本，主要验证基本绑定、读写和 marker run。
+
+如果要验证 canvas/WebSocket 场景，另开一个本地 fixture：
+
+```bash
+node examples/mock-websocket-server.js
+```
+
+打开：
+
+```text
+http://127.0.0.1:18081/
+```
+
+这个 fixture 模拟“页面把终端画到 canvas，DOM 中没有可读文本，但浏览器侧能捕获 WebSocket PTY 输出流”。它只是本地回归测试工具，不是项目的服务端部署方式。
+
+绑定后运行：
+
+```bash
+export WEBSSH_REMOTE_ENV=non-production
+scripts/probe.sh
+scripts/run.sh 'pwd; hostname; echo fixture-ok'
+```
+
+`probe.sh` 应看到：
+
+```json
+{
+  "readMode": "websocket-stream",
+  "readable": true
 }
 ```
 

@@ -182,6 +182,19 @@ function findReadableTerminalRoot() {
   return document.body;
 }
 
+function readDomText(lines) {
+  const root = findReadableTerminalRoot();
+  const text = (root && root.innerText ? root.innerText : "").replace(/\r/g, "");
+  const allLines = text.split("\n");
+  const requested = Number.isInteger(lines) && lines > 0 ? lines : 40;
+  return {
+    text: allLines.slice(-requested).join("\n"),
+    lines: Math.min(requested, allLines.length),
+    source: root ? root.tagName.toLowerCase() : null,
+    readMode: "dom-text"
+  };
+}
+
 function findXtermObject() {
   const candidates = [];
   const seen = new Set();
@@ -220,7 +233,7 @@ function findXtermObject() {
   return candidates[0] || null;
 }
 
-async function readXtermBuffer(lines) {
+async function readXterm(lines) {
   const terminal = findXtermObject();
   const active = terminal?._core?.buffer?.active;
   if (active && typeof active.getLine === "function") {
@@ -239,16 +252,28 @@ async function readXtermBuffer(lines) {
       output.push(line.translateToString(true));
     }
 
-    return output.join("\n");
+    return {
+      text: output.join("\n"),
+      readMode: "xterm-buffer",
+      source: "xterm-buffer"
+    };
   }
 
   try {
     const pageResult = await requestPageHook("read-xterm-buffer", { lines });
     if (pageResult && pageResult.found) {
-      return pageResult.text;
+      return {
+        text: pageResult.text,
+        readMode: "xterm-buffer",
+        source: "page-xterm-buffer"
+      };
     }
     if (pageResult && pageResult.socketText) {
-      return pageResult.socketText;
+      return {
+        text: pageResult.socketText,
+        readMode: "websocket-stream",
+        source: "page-websocket"
+      };
     }
   } catch (_) {
     return null;
@@ -257,43 +282,79 @@ async function readXtermBuffer(lines) {
   return null;
 }
 
+async function getPageHookStats() {
+  if (detectAdapter() !== "xterm-dom") {
+    return null;
+  }
+
+  try {
+    return await requestPageHook("hook-stats");
+  } catch (error) {
+    return {
+      error: String(error && error.message ? error.message : error)
+    };
+  }
+}
+
+function determineReadMode(adapter, pageHook) {
+  if (adapter === "novnc") {
+    return "unavailable";
+  }
+
+  if (findXtermObject() || pageHook?.terminalCount) {
+    return "xterm-buffer";
+  }
+
+  if (pageHook?.socketChunkCount) {
+    return "websocket-stream";
+  }
+
+  const root = findReadableTerminalRoot();
+  if (root && root.innerText) {
+    return "dom-text";
+  }
+
+  return "unknown";
+}
+
 async function readTerminal(lines) {
-  if (detectAdapter() === "novnc") {
+  const adapter = detectAdapter();
+  if (adapter === "novnc") {
     const canvas = findNoVncCanvas();
     return {
       text: "[webssh-remote-linux] noVNC canvas detected; DOM text read is not available for this console.",
       lines: 1,
       source: canvas ? "canvas" : "novnc",
       adapter: "novnc",
+      readMode: "unavailable",
       readable: false,
       url: location.href,
       title: document.title
     };
   }
 
-  const xtermText = await readXtermBuffer(lines);
-  if (xtermText != null) {
-    const allLines = xtermText.split("\n");
+  const xtermRead = await readXterm(lines);
+  if (xtermRead != null) {
+    const allLines = xtermRead.text.split("\n");
     return {
-      text: xtermText,
+      text: xtermRead.text,
       lines: allLines.length,
-      source: "xterm-buffer",
-      adapter: detectAdapter(),
+      source: xtermRead.source,
+      adapter,
+      readMode: xtermRead.readMode,
       readable: true,
       url: location.href,
       title: document.title
     };
   }
 
-  const root = findReadableTerminalRoot();
-  const text = (root && root.innerText ? root.innerText : "").replace(/\r/g, "");
-  const allLines = text.split("\n");
-  const requested = Number.isInteger(lines) && lines > 0 ? lines : 40;
+  const domRead = readDomText(lines);
   return {
-    text: allLines.slice(-requested).join("\n"),
-    lines: Math.min(requested, allLines.length),
-    source: root ? root.tagName.toLowerCase() : null,
-    adapter: detectAdapter(),
+    text: domRead.text,
+    lines: domRead.lines,
+    source: domRead.source,
+    adapter,
+    readMode: domRead.readMode,
     readable: true,
     url: location.href,
     title: document.title
@@ -321,22 +382,23 @@ async function probeTerminal() {
     "canvas"
   ];
 
-  let pageHook = null;
-  if (detectAdapter() === "xterm-dom") {
-    try {
-      pageHook = await requestPageHook("hook-stats");
-    } catch (error) {
-      pageHook = {
-        found: false,
-        error: String(error && error.message ? error.message : error)
-      };
-    }
-  }
+  const adapter = detectAdapter();
+  const pageHook = await getPageHookStats();
+  const readMode = determineReadMode(adapter, pageHook);
 
   return {
     url: location.href,
     title: document.title,
-    adapter: detectAdapter(),
+    adapter,
+    readMode,
+    readable: readMode !== "unavailable" && readMode !== "unknown",
+    capabilities: {
+      domText: Boolean(findReadableTerminalRoot()?.innerText),
+      xtermBuffer: Boolean(findXtermObject()) || Boolean(pageHook?.terminalCount),
+      websocketStream: Boolean(pageHook?.socketChunkCount),
+      pageHook: Boolean(pageHook && !pageHook.error),
+      noVncCanvas: adapter === "novnc" && Boolean(findNoVncCanvas())
+    },
     activeElement: describeElement(document.activeElement),
     terminalInput: describeElement(findTerminalElement()),
     readableRoot: describeElement(findReadableTerminalRoot()),
@@ -346,6 +408,7 @@ async function probeTerminal() {
       hasHelperTextarea: Boolean(document.querySelector(".xterm-helper-textarea")),
       hasScreen: Boolean(document.querySelector(".xterm-screen")),
       hasInspectableBuffer: Boolean(findXtermObject()) || Boolean(pageHook?.terminalCount),
+      hasWebSocketHook: Boolean(pageHook?.webSocketPatched),
       hasSocketCapture: Boolean(pageHook?.socketChunkCount),
       pageHook
     },
